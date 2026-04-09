@@ -1,70 +1,86 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 import prisma from '../lib/prisma';
-import { sendOtpEmail } from '../services/emailService';
 import { authenticate } from '../middleware/authMiddleware';
 
 const router = express.Router();
 
 const asyncHandler = (fn: any) => (req: any, res: any, next: any) => Promise.resolve(fn(req, res, next)).catch(next);
 
-// Generate 6 digit OTP
-const generateOtp = () => Math.floor(100000 + Math.random() * 900000).toString();
-
-router.post('/send-otp', asyncHandler(async (req: any, res: any) => {
-  const { email } = req.body;
-  if (!email) return res.status(400).json({ success: false, message: 'Email is required' });
-
-  const code = generateOtp();
-  const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
-
-  await prisma.otp.create({
-    data: { email, code, expiresAt },
+const setAuthCookie = (res: any, token: string) => {
+  res.cookie('token', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
   });
+};
 
-  await sendOtpEmail(email, code);
-
-  res.json({ success: true, message: 'OTP sent successfully' });
-}));
-
-router.post('/verify-otp', asyncHandler(async (req: any, res: any) => {
-  const { email, code } = req.body;
-  if (!email || !code) return res.status(400).json({ success: false, message: 'Email and code are required' });
-
-  const otpRecord = await prisma.otp.findFirst({
-    where: { email, code, used: false, expiresAt: { gt: new Date() } },
-    orderBy: { createdAt: 'desc' },
-  });
-
-  if (!otpRecord) {
-    return res.status(400).json({ success: false, message: 'Invalid or expired OTP' });
+router.post('/register', asyncHandler(async (req: any, res: any) => {
+  const { email, password, name } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ success: false, message: 'Email and password are required' });
+  }
+  if (String(password).length < 6) {
+    return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
   }
 
-  // Mark OTP as used
-  await prisma.otp.update({ where: { id: otpRecord.id }, data: { used: true } });
-
-  // Find or create user
-  let user = await prisma.user.findUnique({ where: { email } });
-  if (!user) {
-    user = await prisma.user.create({
-      data: { email, name: email.split('@')[0] },
-    });
+  const existingUser = await prisma.user.findUnique({ where: { email } });
+  if (existingUser) {
+    return res.status(409).json({ success: false, message: 'User already exists' });
   }
 
-  // Generate JWT
+  const passwordHash = await bcrypt.hash(String(password), 10);
+  const user = await prisma.user.create({
+    data: {
+      email,
+      passwordHash,
+      name: name || String(email).split('@')[0],
+    },
+  });
+
   const token = jwt.sign(
     { userId: user.id, role: user.role },
     process.env.JWT_SECRET || 'fallback-secret',
     { expiresIn: '7d' }
   );
+  setAuthCookie(res, token);
 
-  // Set HTTP-only cookie
-  res.cookie('token', token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  res.json({
+    success: true,
+    data: {
+      user: { id: user.id, name: user.name, email: user.email, role: user.role, image: user.image },
+      token
+    }
   });
+}));
+
+router.post('/login', asyncHandler(async (req: any, res: any) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ success: false, message: 'Email and password are required' });
+  }
+
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Invalid credentials' });
+  }
+  if (!user.passwordHash) {
+    return res.status(401).json({ success: false, message: 'Please create a new account with password' });
+  }
+
+  const isValidPassword = await bcrypt.compare(String(password), user.passwordHash);
+  if (!isValidPassword) {
+    return res.status(401).json({ success: false, message: 'Invalid credentials' });
+  }
+
+  const token = jwt.sign(
+    { userId: user.id, role: user.role },
+    process.env.JWT_SECRET || 'fallback-secret',
+    { expiresIn: '7d' }
+  );
+  setAuthCookie(res, token);
 
   res.json({
     success: true,

@@ -1,9 +1,11 @@
 import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
 async function main() {
   console.log('🌱 Starting seed...');
+  const defaultPasswordHash = await bcrypt.hash('password123', 10);
 
   // Clean existing data in correct order (respecting foreign keys)
   await prisma.review.deleteMany();
@@ -22,6 +24,7 @@ async function main() {
     data: {
       name: 'Admin User',
       email: 'admin@shopnest.com',
+      passwordHash: defaultPasswordHash,
       role: 'ADMIN',
       image: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop',
     },
@@ -31,6 +34,7 @@ async function main() {
     data: {
       name: 'John Doe',
       email: 'john@example.com',
+      passwordHash: defaultPasswordHash,
       role: 'CUSTOMER',
       image: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop',
     },
@@ -40,6 +44,7 @@ async function main() {
     data: {
       name: 'Priya Sharma',
       email: 'priya@example.com',
+      passwordHash: defaultPasswordHash,
       role: 'CUSTOMER',
       image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop',
     },
