@@ -6,12 +6,12 @@ import { useSelector } from 'react-redux';
 import { RootState } from '@/store/store';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
 import CartDrawer from '../cart/CartDrawer';
-import { useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import SearchModal from '../search/SearchModal';
+import { useState, useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 
 const navLinks = [
   { href: '/products', label: 'All Products' },
@@ -26,13 +26,24 @@ export default function Navbar() {
   const { user, logout } = useAuth();
   const cartItems = useSelector((state: RootState) => state.cart.items);
   const cartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
-  const [search, setSearch] = useState('');
-  const router = useRouter();
+  const [searchOpen, setSearchOpen] = useState(false);
   const pathname = usePathname();
   const activeCategory =
     typeof window !== 'undefined'
       ? new URLSearchParams(window.location.search).get('category') || ''
       : '';
+
+  // Cmd+K / Ctrl+K shortcut to open search
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
 
   const isLinkActive = (href: string) => {
     if (href === '/products') {
@@ -43,14 +54,9 @@ export default function Navbar() {
     return pathname === '/products' && activeCategory === linkCategory;
   };
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (search.trim()) {
-      router.push(`/products?search=${encodeURIComponent(search)}`);
-    }
-  };
 
   return (
+    <>
     <nav className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur-md supports-[backdrop-filter]:bg-background/80 shadow-sm">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between gap-4">
 
@@ -126,17 +132,27 @@ export default function Navbar() {
 
         {/* Right: Search + Cart + User */}
         <div className="flex items-center gap-2">
-          {/* Desktop Search */}
-          <form onSubmit={handleSearch} className="hidden lg:flex relative items-center">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-            <Input
-              type="text"
-              placeholder="Search products..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-9 w-60 pl-9 pr-3 bg-secondary border-0 focus-visible:ring-1 focus-visible:ring-primary focus-visible:bg-background text-sm transition-all"
-            />
-          </form>
+          {/* Desktop Search — Algolia trigger */}
+          <button
+            onClick={() => setSearchOpen(true)}
+            className="hidden lg:flex items-center gap-2 h-9 w-64 px-3 rounded-lg bg-secondary text-muted-foreground text-sm hover:bg-border/70 transition-colors border border-transparent hover:border-border"
+          >
+            <Search className="h-4 w-4 flex-shrink-0" />
+            <span className="flex-1 text-left">Search products…</span>
+            <kbd className="hidden xl:inline-flex items-center gap-0.5 text-[10px] font-mono bg-background border border-border px-1.5 py-0.5 rounded">
+              ⌘K
+            </kbd>
+          </button>
+
+          {/* Mobile Search Icon */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setSearchOpen(true)}
+            className="lg:hidden h-9 w-9 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary"
+          >
+            <Search className="h-5 w-5" />
+          </Button>
 
           {/* Cart */}
           <CartDrawer>
@@ -199,5 +215,9 @@ export default function Navbar() {
         </div>
       </div>
     </nav>
+
+    {/* Algolia Search Modal — full screen overlay */}
+    <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
+  </>
   );
 }

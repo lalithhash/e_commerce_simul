@@ -1,5 +1,6 @@
 import express from 'express';
 import prisma from '../lib/prisma';
+import { saveProductToAlgolia, deleteProductFromAlgolia } from '../lib/algolia';
 import { authenticate, requireAdmin } from '../middleware/authMiddleware';
 
 const router = express.Router();
@@ -97,8 +98,9 @@ router.post('/', authenticate, requireAdmin, asyncHandler(async (req: any, res: 
     data.slug = data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   }
 
-  const product = await prisma.product.create({ data });
-  
+  const product = await prisma.product.create({ data, include: { category: true } });
+  // Sync new product to Algolia
+  await saveProductToAlgolia(product);
   res.status(201).json({ success: true, data: product });
 }));
 
@@ -109,15 +111,19 @@ router.put('/:id', authenticate, requireAdmin, asyncHandler(async (req: any, res
 
   const product = await prisma.product.update({
     where: { id },
-    data
+    data,
+    include: { category: true },
   });
-  
+  // Sync updated product to Algolia
+  await saveProductToAlgolia(product);
   res.json({ success: true, data: product });
 }));
 
 // ADMIN: Delete Product
 router.delete('/:id', authenticate, requireAdmin, asyncHandler(async (req: any, res: any) => {
   await prisma.product.delete({ where: { id: req.params.id } });
+  // Remove from Algolia
+  await deleteProductFromAlgolia(req.params.id);
   res.json({ success: true, message: 'Product deleted' });
 }));
 

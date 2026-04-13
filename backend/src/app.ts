@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
+import { syncAllProducts } from './lib/algolia';
 
 import authRoutes from './routes/auth';
 import productRoutes from './routes/products';
@@ -14,6 +15,9 @@ import userRoutes from './routes/users';
 import adminRoutes from './routes/admin';
 
 dotenv.config();
+
+// Sync products to Algolia on startup (also prevents 60-day inactivity index deletion)
+syncAllProducts();
 
 const app = express();
 

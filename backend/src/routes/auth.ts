@@ -134,6 +134,7 @@ router.post('/google', asyncHandler(async (req: any, res: any) => {
 
   // Find or create the user — email is the unique key linking Google to existing accounts
   let user = await prisma.user.findUnique({ where: { email } });
+  let isNew = false;
 
   if (!user) {
     user = await prisma.user.create({
@@ -144,6 +145,7 @@ router.post('/google', asyncHandler(async (req: any, res: any) => {
         // passwordHash intentionally left null — this is an OAuth user
       },
     });
+    isNew = true;
   } else if (!user.image && picture) {
     // Update profile picture if they didn't have one yet
     user = await prisma.user.update({
@@ -165,6 +167,7 @@ router.post('/google', asyncHandler(async (req: any, res: any) => {
     data: {
       user: { id: user.id, name: user.name, email: user.email, role: user.role, image: user.image },
       token,
+      isNew,
     },
   });
 }));

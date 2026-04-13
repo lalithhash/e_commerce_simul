@@ -29,7 +29,20 @@ export default function LoginPage() {
         window.location.href = '/';
       }
     } catch (err: any) {
-      toast.error(err.message || 'Invalid email or password');
+      // Give a specific hint if the account simply doesn't exist
+      if (err.message?.toLowerCase().includes('invalid credentials') ||
+          err.message?.toLowerCase().includes('not found')) {
+        toast.error(
+          'No account found with this email.',
+          {
+            description: 'Want to create a new account instead?',
+            action: { label: 'Register', onClick: () => window.location.href = '/auth/register' },
+            duration: 5000,
+          }
+        );
+      } else {
+        toast.error(err.message || 'Invalid email or password');
+      }
     } finally {
       setLoading(false);
     }
@@ -41,7 +54,11 @@ export default function LoginPage() {
       const res: any = await api.post('/auth/google', { access_token: tokenResponse.access_token });
       if (res.success) {
         login(res.data.user);
-        toast.success('Signed in with Google!');
+        if (res.data.isNew) {
+          toast.success('Account created with Google! Welcome to ShopNest 🎉');
+        } else {
+          toast.success('Signed in with Google!');
+        }
         window.location.href = '/';
       }
     } catch (err: any) {

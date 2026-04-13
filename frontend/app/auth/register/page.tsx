@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,6 +18,7 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const { login } = useAuth();
+  const router = useRouter();
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,11 +28,17 @@ export default function RegisterPage() {
       const res: any = await api.post('/auth/register', { name, email, password });
       if (res.success) {
         login(res.data.user);
-        toast.success('Account created successfully!');
+        toast.success('Account created successfully! Welcome to ShopNest 🎉');
         window.location.href = '/';
       }
     } catch (err: any) {
-      toast.error(err.message || 'Failed to create account');
+      // 409 = account already exists → redirect to login
+      if (err.status === 409 || err.message?.toLowerCase().includes('already exists')) {
+        toast.info('Account already exists. Redirecting to sign in…');
+        setTimeout(() => router.push('/auth/login'), 1200);
+      } else {
+        toast.error(err.message || 'Failed to create account');
+      }
     } finally {
       setLoading(false);
     }
@@ -42,7 +50,12 @@ export default function RegisterPage() {
       const res: any = await api.post('/auth/google', { access_token: tokenResponse.access_token });
       if (res.success) {
         login(res.data.user);
-        toast.success('Account created with Google!');
+        // isNew flag tells us if this was a fresh account or an existing one
+        if (res.data.isNew === false) {
+          toast.info('Welcome back! You already have an account — signing you in.');
+        } else {
+          toast.success('Account created with Google! Welcome 🎉');
+        }
         window.location.href = '/';
       }
     } catch (err: any) {
