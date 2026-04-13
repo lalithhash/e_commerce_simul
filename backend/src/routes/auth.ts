@@ -6,6 +6,7 @@ import { authenticate } from '../middleware/authMiddleware';
 
 const router = express.Router();
 
+
 const asyncHandler = (fn: any) => (req: any, res: any, next: any) => Promise.resolve(fn(req, res, next)).catch(next);
 
 const setAuthCookie = (res: any, token: string) => {
@@ -99,5 +100,73 @@ router.post('/logout', (req, res) => {
 router.get('/me', authenticate, (req: any, res: any) => {
   res.json({ success: true, data: req.user });
 });
+
+// Google OAuth — verify access_token via Google userinfo endpoint, find-or-create user, issue same JWT cookie
+router.post('/google', asyncHandler(async (req: any, res: any) => {
+  const { access_token } = req.body;
+
+  if (!access_token) {
+    return res.status(400).json({ success: false, message: 'Google access_token is required' });
+  }
+
+  // Call Google userinfo endpoint to validate token and retrieve user info
+  let googleUser: any;
+  try {
+    const response = await fetch(
+      `https://www.googleapis.com/oauth2/v3/userinfo`,
+      { headers: { Authorization: `Bearer ${access_token}` } }
+    );
+
+    if (!response.ok) {
+      return res.status(401).json({ success: false, message: 'Invalid or expired Google token' });
+    }
+
+    googleUser = await response.json();
+  } catch {
+    return res.status(401).json({ success: false, message: 'Failed to verify Google token' });
+  }
+
+  if (!googleUser?.email) {
+    return res.status(400).json({ success: false, message: 'Could not retrieve email from Google' });
+  }
+
+  const { email, name, picture } = googleUser;
+
+  // Find or create the user — email is the unique key linking Google to existing accounts
+  let user = await prisma.user.findUnique({ where: { email } });
+
+  if (!user) {
+    user = await prisma.user.create({
+      data: {
+        email,
+        name: name || email.split('@')[0],
+        image: picture || null,
+        // passwordHash intentionally left null — this is an OAuth user
+      },
+    });
+  } else if (!user.image && picture) {
+    // Update profile picture if they didn't have one yet
+    user = await prisma.user.update({
+      where: { email },
+      data: { image: picture },
+    });
+  }
+
+  // Issue the exact same JWT cookie as email/password login
+  const token = jwt.sign(
+    { userId: user.id, role: user.role },
+    process.env.JWT_SECRET || 'fallback-secret',
+    { expiresIn: '7d' }
+  );
+  setAuthCookie(res, token);
+
+  res.json({
+    success: true,
+    data: {
+      user: { id: user.id, name: user.name, email: user.email, role: user.role, image: user.image },
+      token,
+    },
+  });
+}));
 
 export default router;
